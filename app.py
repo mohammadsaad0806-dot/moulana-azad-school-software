@@ -34,29 +34,7 @@ license_data = load_license()
 expiry_date = datetime.fromisoformat(license_data["expiry"])
 
 if datetime.now() > expiry_date:
-    st.error(f"🔒 Locked! Expiry: {expiry_date.strftime('%d-%m-%Y')}")
-    st.info("Contact: M Saad - 7387246146")
-    with st.expander("Admin Login"):
-        pwd = st.text_input("Password", type="password")
-        if pwd == ADMIN_PASSWORD:
-            days = st.number_input("Days", 1, 1000, 30)
-            if st.button("Generate Code"):
-                code = f"MAZAD{days}-{hashlib.md5(str(time.time()).encode()).hexdigest()[:6].upper()}"
-                st.code(code)
-            if st.button("Direct Recharge 30 Days"):
-                save_license({"expiry": (datetime.now() + timedelta(days=30)).isoformat()})
-                st.rerun()
-    code_in = st.text_input("Activation Code")
-    if st.button("Activate"):
-        if code_in.startswith("MAZAD"):
-            try:
-                d = int(code_in.split("-")[0].replace("MAZAD",""))
-                save_license({"expiry": (datetime.now() + timedelta(days=d)).isoformat()})
-                st.success("Activated!")
-                time.sleep(1)
-                st.rerun()
-            except:
-                st.error("Invalid Code")
+    st.error(f"🔒 Locked! {expiry_date.strftime('%d-%m-%Y')}")
     st.stop()
 
 def generate_royal_pdf(df, filename):
@@ -69,7 +47,6 @@ def generate_royal_pdf(df, filename):
         table_data.append([str(v) for v in row.tolist()])
 
     col_widths = [55, 210, 75, 55, 110]
-    # Agar column zyada hue to auto adjust
     if len(headers)!= 5:
         col_widths = None
 
@@ -108,23 +85,16 @@ def generate_royal_pdf(df, filename):
 
     doc.build(story, onFirstPage=on_page, onLaterPages=on_page)
 
-# --- UI ---
 st.markdown(f"<h2 style='text-align:center; color:#1e3a5f;'>{COLLEGE_NAME}</h2>", unsafe_allow_html=True)
 st.markdown(f"<p style='text-align:center;'>{COLLEGE_LINE2}</p>", unsafe_allow_html=True)
 st.divider()
 
 uploaded = st.file_uploader("Excel File Upload Karo", type=["xlsx", "xls"])
-
 if uploaded:
     df = pd.read_excel(uploaded)
-    st.success(f"{len(df)} Students Loaded")
     st.dataframe(df, use_container_width=True)
-
     if st.button("📄 Generate Royal PDF", type="primary"):
-        fname = f"Merit_List_{datetime.now().strftime('%d%m%Y_%H%M')}.pdf"
+        fname = f"Merit_{datetime.now().strftime('%d%m%Y_%H%M')}.pdf"
         generate_royal_pdf(df, fname)
         with open(fname, "rb") as f:
             st.download_button("📥 Download PDF", f, file_name=fname, mime="application/pdf")
-        st.success("Ho gaya bhai! Bilkul 2nd photo jaisi!")
-
-st.sidebar.info(f"Expiry: {expiry_date.strftime('%d-%m-%Y')}")
