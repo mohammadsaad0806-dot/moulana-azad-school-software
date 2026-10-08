@@ -1,205 +1,152 @@
 import streamlit as st
 import pandas as pd
-from fpdf import FPDF
-import hashlib
-from datetime import datetime, timedelta
+import json
 import os
+import hashlib
+import time
+from datetime import datetime, timedelta
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import A4
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Spacer
+from reportlab.lib.units import inch
+from reportlab.lib.colors import HexColor
 
-SECRET = "SAAD7387"
-SCHOOL_NAME = "MAULANA AZAD URDU HIGH SCHOOL & JUNIOR COLLEGE"
-SCHOOL_ADDR = "DHAD, DIST. WASHIM - 444701 | Phone: 9021222111"
-FOOTER_TEXT = "Powered by M Saad Software - 7387246146"
-EXPIRY_FILE = "expiry.txt"
+st.set_page_config(page_title="M Saad Software - Maulana Azad", layout="wide")
 
-def generate_code(days):
-    chk = hashlib.md5(f"{days}{SECRET}".encode()).hexdigest()[:4].upper()
-    return f"MAZAD{days}-{chk}"
+ADMIN_PASSWORD = "Saad@786"
+LICENSE_FILE = "license.json"
+COLLEGE_NAME = "MAULANA AZAD URDU HIGH SCHOOL & JUNIOR COLLEGE"
+COLLEGE_LINE2 = "DHAD | Phone: 9021222111"
 
-def verify_code(code):
+def load_license():
+    if not os.path.exists(LICENSE_FILE):
+        data = {"expiry": (datetime.now() + timedelta(days=30)).isoformat()}
+        with open(LICENSE_FILE, "w") as f:
+            json.dump(data, f)
+        return data
     try:
-        code = code.strip().upper()
-        if not code.startswith("MAZAD"): return None
-        parts = code.split("-")
-        if len(parts) < 2: return None
-        days_part = parts[0].replace("MAZAD","")
-        days = int(days_part)
-        chk_input = parts[1]
-        chk_real = hashlib.md5(f"{days}{SECRET}".encode()).hexdigest()[:4].upper()
-        if chk_input == chk_real: return days
-        return None
-    except: return None
+        with open(LICENSE_FILE, "r") as f:
+            return json.load(f)
+    except:
+        return {"expiry": (datetime.now() + timedelta(days=30)).isoformat()}
 
-def save_expiry(date_obj):
-    try:
-        with open(EXPIRY_FILE, "w") as f:
-            f.write(date_obj.isoformat())
-    except: pass
+def save_license(data):
+    with open(LICENSE_FILE, "w") as f:
+        json.dump(data, f)
 
-def load_expiry():
-    try:
-        if os.path.exists(EXPIRY_FILE):
-            with open(EXPIRY_FILE, "r") as f:
-                d = f.read().strip()
-                if d:
-                    return datetime.fromisoformat(d).date()
-    except: pass
-    return None
+license_data = load_license()
+expiry_date = datetime.fromisoformat(license_data["expiry"])
+is_locked = datetime.now() > expiry_date
 
-st.set_page_config(page_title="Maulana Azad School", layout="wide", page_icon="🏫")
-
-if "expiry" not in st.session_state:
-    st.session_state.expiry = load_expiry()
-if "students" not in st.session_state:
-    st.session_state.students = []
-
-def is_active():
-    if st.session_state.expiry is None:
-        st.session_state.expiry = load_expiry()
-    if st.session_state.expiry is None:
-        return False
-    return datetime.now().date() <= st.session_state.expiry
-
-if not is_active():
-    st.markdown(f"<h1 style='text-align:center; color:#1e3a5f'>{SCHOOL_NAME}</h1>", unsafe_allow_html=True)
-    st.markdown(f"<p style='text-align:center'>{SCHOOL_ADDR}</p>", unsafe_allow_html=True)
-    st.divider()
-    st.error("🔒 Software Locked Hai! Activation Code Dale")
-    st.info("Code ke liye Contact Karo: M Saad - 7387246146")
-    code_input = st.text_input("Activation Code Yaha Dale:", placeholder="Ex: MAZAD30-F4A2")
-    if st.button("🔓 Activate Karo", use_container_width=True, type="primary"):
-        days = verify_code(code_input)
-        if days:
-            expiry_date = datetime.now().date() + timedelta(days=days)
-            st.session_state.expiry = expiry_date
-            save_expiry(expiry_date)
-            st.success(f"Activated! {days} din ke liye. Expiry: {expiry_date}")
-            st.balloons()
-            st.rerun()
-        else:
-            st.error("Galat Code! Sahi code M Saad se lo.")
-    with st.expander("🔑 Admin Login (Only for M Saad)"):
+if is_locked:
+    st.error(f"🔒 Software Locked! Expiry: {expiry_date.strftime('%d-%m-%Y')}")
+    st.markdown("### Contact M Saad - 7387246146 for Recharge")
+    with st.expander("Admin Login (Only for M Saad)"):
         pwd = st.text_input("Admin Password", type="password")
-        if pwd == "Saad@786":
+        if pwd == ADMIN_PASSWORD:
             st.success("Welcome Boss!")
-            d = st.number_input("Kitne din ka code banana hai?", min_value=1, max_value=3650, value=30)
-            if st.button("Code Banao"):
-                c = generate_code(d)
-                st.code(c)
-                st.write(f"Ye code {d} din tak chalega")
-        elif pwd!= "":
-            st.error("Galat Password")
+            days = st.number_input("Kitne din ka code?", 1, 1000, 30)
+            if st.button("Generate Code"):
+                code = f"MAZAD{days}-{hashlib.md5(str(time.time()).encode()).hexdigest()[:6].upper()}"
+                st.code(code)
+            st.divider()
+            direct = st.number_input("Direct Recharge Days", 1, 1000, 30, key="direct")
+            if st.button("Recharge Now"):
+                new_exp = datetime.now() + timedelta(days=direct)
+                save_license({"expiry": new_exp.isoformat()})
+                st.success(f"Recharged till {new_exp.strftime('%d-%m-%Y')}")
+                time.sleep(1)
+                st.rerun()
+    ac = st.text_input("Activation Code")
+    if st.button("Activate"):
+        if ac.startswith("MAZAD"):
+            try:
+                d = int(ac.split("-")[0].replace("MAZAD",""))
+                new_exp = datetime.now() + timedelta(days=d)
+                save_license({"expiry": new_exp.isoformat()})
+                st.success(f"Activated {d} days!")
+                time.sleep(1)
+                st.rerun()
+            except:
+                st.error("Galat Code")
+        else:
+            st.error("Invalid Code")
     st.stop()
 
-days_left = (st.session_state.expiry - datetime.now().date()).days
-st.sidebar.success(f"✅ Recharge Active: {days_left} din baaki | Expiry: {st.session_state.expiry}")
-if st.sidebar.button("🔒 Logout / Lock Karo"):
-    if os.path.exists(EXPIRY_FILE):
-        os.remove(EXPIRY_FILE)
-    st.session_state.expiry = None
-    st.rerun()
+days_left = (expiry_date - datetime.now()).days
+st.sidebar.info(f"⏰ Expiry: {expiry_date.strftime('%d-%m-%Y')} | {days_left} din baki")
 
-st.markdown(f"<h2 style='text-align:center; color:#1e3a5f'>{SCHOOL_NAME}</h2>", unsafe_allow_html=True)
-st.markdown(f"<p style='text-align:center; color:#555'>{SCHOOL_ADDR}</p>", unsafe_allow_html=True)
+with st.sidebar.expander("🔐 M Saad Code Generator"):
+    p = st.text_input("Password", type="password", key="gen")
+    if p == ADMIN_PASSWORD:
+        gd = st.number_input("Days", 1, 1000, 30, key="gd")
+        if st.button("Generate"):
+            c = f"MAZAD{gd}-{hashlib.md5(str(time.time()).encode()).hexdigest()[:6].upper()}"
+            st.code(c)
+
+st.markdown(f"<h2 style='text-align:center; color:#1e3a5f;'>{COLLEGE_NAME}</h2>", unsafe_allow_html=True)
+st.markdown(f"<p style='text-align:center;'>{COLLEGE_LINE2}</p>", unsafe_allow_html=True)
 st.divider()
 
-with st.sidebar:
-    st.header("➕ Student Add Karo")
-    with st.form("add_form", clear_on_submit=True):
-        name = st.text_input("Student ka Naam*")
-        gender = st.selectbox("Gender", ["MALE", "FEMALE", "OTHER"])
-        class_name = st.selectbox("Class", ["5","6","7","8","9","10","11","12"])
-        perc = st.number_input("Percentage (%)", min_value=0.0, max_value=100.0, step=0.01, format="%.2f")
-        submitted = st.form_submit_button(" + Add Student", use_container_width=True)
-        if submitted:
-            if name.strip() == "":
-                st.warning("Naam to dal bhai!")
-            else:
-                st.session_state.students.append({"name": name.strip(), "gender": gender, "class": class_name, "percentage": perc})
-                st.success(f"{name} added!")
-    if st.button("🗑️ Saare Students Delete Karo", use_container_width=True):
-        st.session_state.students = []
-        st.rerun()
-    with st.expander("🔑 M Saad Code Generator"):
-        pwd2 = st.text_input("Password", type="password", key="admin2")
-        if pwd2 == "Saad@786":
-            d2 = st.number_input("Din", min_value=1, max_value=3650, value=30, key="d2")
-            if st.button("Generate", key="gen2"):
-                st.code(generate_code(d2))
+uploaded = st.file_uploader("Excel File Upload Karo", type=["xlsx","xls"])
 
-if st.session_state.students:
-    df = pd.DataFrame(st.session_state.students)
-    df = df.sort_values(by="percentage", ascending=False).reset_index(drop=True)
-    df_display = df.copy()
-    df_display.index = df_display.index + 1
-    df_display.index.name = "SR.NO"
-    st.subheader(f"Total Students: {len(df)} | Sorted by Percentage")
-    st.dataframe(df_display, use_container_width=True)
+def generate_royal_pdf(df, filename):
+    doc = SimpleDocTemplate(filename, pagesize=A4, topMargin=80, bottomMargin=50, leftMargin=30, rightMargin=30)
+    story = []
 
-    class RoyalPDF(FPDF):
-        def header(self):
-            self.set_fill_color(15, 23, 42)
-            self.set_text_color(255,255,255)
-            self.set_font("Arial", "B", 18)
-            self.cell(0, 14, SCHOOL_NAME, ln=True, align='C', fill=True)
-            self.set_font("Arial", "", 10)
-            self.set_fill_color(30, 58, 95)
-            self.cell(0, 8, SCHOOL_ADDR, ln=True, align='C', fill=True)
-            self.set_font("Arial", "B", 12)
-            self.set_fill_color(251, 191, 36)
-            self.set_text_color(15,23,42)
-            self.cell(0, 9, "STUDENT MERIT LIST - PERCENTAGE WISE", ln=True, align='C', fill=True)
-            self.ln(4)
-        def footer(self):
-            self.set_y(-15)
-            self.set_font("Arial", "I", 8)
-            self.set_text_color(100,100,100)
-            self.cell(0, 10, f"{FOOTER_TEXT} | Generated: {datetime.now().strftime('%d-%m-%Y %H:%M')} | Page {self.page_no()}", align='C')
+    headers = [str(c).upper() for c in df.columns.tolist()]
+    table_data = [headers]
+    for _, row in df.iterrows():
+        vals = []
+        for v in row:
+            vals.append(str(v))
+        table_data.append(vals)
 
-    def create_pdf(data):
-        pdf = RoyalPDF(orientation='L', format='A4')
-        pdf.add_page()
-        pdf.set_auto_page_break(auto=True, margin=20)
-        col_widths = [20, 125, 30, 20, 35]
-        headers = ["SR.NO", "STUDENT NAME", "GENDER", "CLASS", "PERCENTAGE"]
-        pdf.set_fill_color(15, 23, 42)
-        pdf.set_text_color(255,255,255)
-        pdf.set_font("Arial", "B", 11)
-        for i, h in enumerate(headers):
-            pdf.cell(col_widths[i], 11, h, border=1, align='C', fill=True)
-        pdf.ln()
-        pdf.set_font("Arial", "", 11)
-        for idx, row in enumerate(data, start=1):
-            if idx == 1: pdf.set_fill_color(255, 243, 205)
-            elif idx == 2: pdf.set_fill_color(228, 228, 231)
-            elif idx == 3: pdf.set_fill_color(255, 228, 196)
-            else:
-                if idx % 2 == 0: pdf.set_fill_color(255,255,255)
-                else: pdf.set_fill_color(241, 245, 249)
-            pdf.set_text_color(0,0,0)
-            pdf.cell(col_widths[0], 9, str(idx), border=1, align='C', fill=True)
-            pdf.set_font("Arial", "B", 11)
-            pdf.cell(col_widths[1], 9, row["name"].upper(), border=1, fill=True)
-            pdf.set_font("Arial", "", 10)
-            pdf.cell(col_widths[2], 9, row["gender"], border=1, align='C', fill=True)
-            pdf.cell(col_widths[3], 9, str(row["class"]), border=1, align='C', fill=True)
-            per = row["percentage"]
-            if per >= 75: pdf.set_text_color(16,185,129)
-            elif per >= 60: pdf.set_text_color(37,99,235)
-            else: pdf.set_text_color(220,38,38)
-            pdf.set_font("Arial", "B", 11)
-            pdf.cell(col_widths[4], 9, f"{per:.2f} %", border=1, align='C', fill=True)
-            pdf.ln()
-            pdf.set_text_color(0,0,0)
-            pdf.set_font("Arial", "", 11)
-        return pdf
+    col_widths = [60, 220, 80, 60, 115]
+    table = Table(table_data, colWidths=col_widths, repeatRows=1)
 
-    if st.button("📄 Royal PDF Banao - Topper List Design", type="primary", use_container_width=True):
-        sorted_students = sorted(st.session_state.students, key=lambda x: x["percentage"], reverse=True)
-        pdf = create_pdf(sorted_students)
-        pdf_path = f"/tmp/Royal_List_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
-        pdf.output(pdf_path)
-        with open(pdf_path, "rb") as f:
-            st.download_button(label="⬇️ Royal PDF Download Karo", data=f, file_name=f"Royal_Merit_List_{datetime.now().strftime('%d-%m-%Y')}.pdf", mime="application/pdf", use_container_width=True)
-        st.success("✅ Royal PDF Ready Hai!")
-else:
-    st.info("Abhi koi student add nahi hai. Sidebar se add karo.")
+    style = TableStyle([
+        ('BACKGROUND', (0,0), (-1,0), HexColor('#0e8a7a')),
+        ('TEXTCOLOR', (0,0), (-1,0), colors.white),
+        ('ALIGN', (0,0), (-1,0), 'CENTER'),
+        ('ALIGN', (0,1), (0,-1), 'CENTER'),
+        ('ALIGN', (2,1), (-1,-1), 'CENTER'),
+        ('ALIGN', (1,1), (1,-1), 'LEFT'),
+        ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0,0), (-1,-1), 10),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 10),
+        ('TOPPADDING', (0,0), (-1,-1), 10),
+        ('GRID', (0,0), (-1,-1), 0.6, colors.black),
+        ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.white, HexColor('#eaf6f3')]),
+    ])
+    table.setStyle(style)
+    story.append(Spacer(1, 0.3*inch))
+    story.append(table)
+
+    def on_page(canvas, doc):
+        canvas.saveState()
+        canvas.setFillColor(HexColor('#1e3a5f'))
+        canvas.rect(0, 720, 595, 90, stroke=0, fill=1)
+        canvas.setFillColor(colors.white)
+        canvas.setFont("Helvetica-Bold", 12)
+        canvas.drawCentredString(297.5, 770, COLLEGE_NAME)
+        canvas.setFont("Helvetica", 9)
+        canvas.drawCentredString(297.5, 745, COLLEGE_LINE2)
+        canvas.setFillColor(HexColor('#666666'))
+        canvas.setFont("Helvetica-Oblique", 7)
+        canvas.drawString(120, 30, "Thank you! | Powered by M Saad Software - 7387246146")
+        canvas.drawRightString(520, 20, f"Page {doc.page}")
+        canvas.restoreState()
+
+    doc.build(story, onFirstPage=on_page, onLaterPages=on_page)
+
+if uploaded:
+    df = pd.read_excel(uploaded)
+    st.success(f"{len(df)} Students Loaded")
+    st.dataframe(df, use_container_width=True)
+    if st.button("📄 Generate Royal PDF (2nd Photo Jaisi)", type="primary"):
+        fname = f"Maulana_Azad_Merit_{datetime.now().strftime('%d%m%Y_%H%M%S')}.pdf"
+        generate_royal_pdf(df, fname)
+        with open(fname, "rb") as f:
+            st.download_button("📥 PDF Download Karo", f, file_name=fname, mime="application/pdf")
+        st.success("Ho gaya bhai! Bilkul Royal PDF ready!")
