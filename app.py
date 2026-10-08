@@ -7,7 +7,7 @@ import os
 
 SECRET = "SAAD7387"
 SCHOOL_NAME = "MAULANA AZAD URDU HIGH SCHOOL & JUNIOR COLLEGE"
-SCHOOL_ADDR = "DHAD, DIST. WASHIM - 444701 | Phone: 9021222111"
+SCHOOL_ADDR = "DHAD, DIST. BULDHANA - 444701 | Phone: 9021222111"
 FOOTER_TEXT = "Powered by M Saad Software - 7387246146"
 EXPIRY_FILE = "expiry.txt"
 
@@ -38,6 +38,7 @@ st.set_page_config(page_title="Maulana Azad", layout="wide")
 
 if "expiry" not in st.session_state: st.session_state.expiry = load_expiry()
 if "students" not in st.session_state: st.session_state.students = []
+if "pdf_data" not in st.session_state: st.session_state.pdf_data = None
 
 def is_active():
     if st.session_state.expiry is None: st.session_state.expiry = load_expiry()
@@ -45,7 +46,6 @@ def is_active():
 
 if not is_active():
     st.markdown(f"<h1 style='text-align:center; color:#1e3a5f'>{SCHOOL_NAME}</h1>", unsafe_allow_html=True)
-    st.markdown(f"<p style='text-align:center'>{SCHOOL_ADDR}</p>", unsafe_allow_html=True)
     st.divider()
     st.error("🔒 Locked! Code dalo")
     c = st.text_input("Activation Code:")
@@ -55,7 +55,7 @@ if not is_active():
             exp = datetime.now().date() + timedelta(days=d)
             st.session_state.expiry = exp
             save_expiry(exp)
-            st.success(f"Active {d} din!"); st.rerun()
+            st.rerun()
         else: st.error("Galat Code")
     with st.expander("Admin - M Saad"):
         p = st.text_input("Password", type="password")
@@ -64,7 +64,6 @@ if not is_active():
             if st.button("Generate"): st.code(generate_code(dn))
     st.stop()
 
-# --- MAIN ---
 st.sidebar.success(f"Active till {st.session_state.expiry}")
 st.markdown(f"<h2 style='text-align:center; color:#1e3a5f'>{SCHOOL_NAME}</h2>", unsafe_allow_html=True)
 st.markdown(f"<p style='text-align:center'>{SCHOOL_ADDR}</p>", unsafe_allow_html=True)
@@ -80,19 +79,20 @@ with st.sidebar:
         if st.form_submit_button("Add", use_container_width=True):
             if name.strip():
                 st.session_state.students.append({"name":name.strip(),"gender":gender,"class":cl,"percentage":per})
-            else: st.warning("Naam dalo")
-    if st.button("Delete All"): st.session_state.students=[]; st.rerun()
+                st.session_state.pdf_data = None
+    if st.button("Delete All"):
+        st.session_state.students=[]
+        st.session_state.pdf_data=None
+        st.rerun()
 
 if st.session_state.students:
     df = pd.DataFrame(st.session_state.students).sort_values(by="percentage", ascending=False).reset_index(drop=True)
     st.dataframe(df, use_container_width=True)
 
-    def create_pdf(data_list):
+    def create_pdf_bytes(data_list):
         pdf = FPDF('P','mm','A4')
         pdf.set_auto_page_break(auto=True, margin=20)
         pdf.add_page()
-
-        # Blue Header
         pdf.set_fill_color(30,58,95)
         pdf.rect(0,0,210,32,'F')
         pdf.set_xy(0,9)
@@ -103,8 +103,6 @@ if st.session_state.students:
         pdf.set_font("Helvetica","",9)
         pdf.cell(210,5,SCHOOL_ADDR,align='C')
         pdf.ln(28)
-
-        # Table Header - Teal
         pdf.set_fill_color(14,138,122)
         pdf.set_text_color(255,255,255)
         pdf.set_font("Helvetica","B",10)
@@ -113,8 +111,6 @@ if st.session_state.students:
         for i,h in enumerate(hd):
             pdf.cell(cw[i],10,h,border=1,align='C',fill=True)
         pdf.ln()
-
-        # Rows
         pdf.set_font("Helvetica","",10)
         pdf.set_text_color(0,0,0)
         for idx, row in enumerate(data_list,1):
@@ -128,20 +124,26 @@ if st.session_state.students:
             pdf.cell(cw[4],9,f"{row['percentage']:.2f} %",border=1,align='C',fill=True)
             pdf.ln()
             pdf.set_font("Helvetica","",10)
-
         pdf.set_y(-18)
         pdf.set_font("Helvetica","I",7)
         pdf.set_text_color(100,100,100)
         pdf.cell(0,10,f"Thank you! | {FOOTER_TEXT} | {datetime.now().strftime('%d-%m-%Y')}",align='C')
-        return pdf
+        return bytes(pdf.output())
 
+    # FIX: Ek hi button se PDF banao aur download dikhao
     if st.button("📄 Royal PDF Banao", type="primary", use_container_width=True):
         sorted_list = sorted(st.session_state.students, key=lambda x: x["percentage"], reverse=True)
-        pdf = create_pdf(sorted_list)
-        path = "Royal_Merit_List.pdf"
-        pdf.output(path)
-        with open(path,"rb") as f:
-            st.download_button("⬇️ Download PDF", f, file_name=f"Merit_{datetime.now().strftime('%d%m%Y')}.pdf", mime="application/pdf", use_container_width=True)
-        st.success("Ready! Bilkul 2nd photo jaisi!")
+        st.session_state.pdf_data = create_pdf_bytes(sorted_list)
+        st.success("✅ PDF Ready! Neeche se download karo")
+
+    if st.session_state.pdf_data:
+        st.download_button(
+            label="⬇️ Royal PDF Download Karo - Click Here",
+            data=st.session_state.pdf_data,
+            file_name=f"Royal_Merit_List_{datetime.now().strftime('%d%m%Y')}.pdf",
+            mime="application/pdf",
+            use_container_width=True,
+            type="primary"
+        )
 else:
     st.info("Koi student nahi, sidebar se add karo.")
