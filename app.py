@@ -1,128 +1,154 @@
 import streamlit as st
+import pandas as pd
 from fpdf import FPDF
-from datetime import datetime
+import hashlib
+from datetime import datetime, timedelta
 
-# ==========================================
-# SCHOOL DETAILS - tu yaha se change kar sakta hai
-# ==========================================
+# --- CONFIG ---
+SECRET = "SAAD7387"
 SCHOOL_NAME = "MAULANA AZAD URDU HIGH SCHOOL & JUNIOR COLLEGE"
-SCHOOL_ADDRESS = "DHAD"
-SCHOOL_PHONE = "9021222111"
-SOFTWARE_NAME = "M Saad Software"
-SOFTWARE_PHONE = "7387246146"
+SCHOOL_ADDR = "DHAD | Phone: 9021222111"
+FOOTER_TEXT = "Thank you! | Powered by M Saad Software - 7387246146"
 
-st.set_page_config(page_title="M Saad School Software", layout="wide")
-st.title("🏫 M Saad School Software")
-st.caption(f"{SCHOOL_NAME} - Royal List Generator")
+def generate_code(days):
+    chk = hashlib.md5(f"{days}{SECRET}".encode()).hexdigest()[:4].upper()
+    return f"MAZAD{days}-{chk}"
 
+def verify_code(code):
+    try:
+        code = code.strip().upper()
+        if not code.startswith("MAZAD"):
+            return None
+        parts = code.split("-")
+        if len(parts) < 2:
+            return None
+        days_part = parts[0].replace("MAZAD", "")
+        days = int(days_part)
+        chk_input = parts[1]
+        chk_real = hashlib.md5(f"{days}{SECRET}".encode()).hexdigest()[:4].upper()
+        if chk_input == chk_real:
+            return days
+        return None
+    except:
+        return None
+
+st.set_page_config(page_title="Maulana Azad School", layout="wide", page_icon="🏫")
+
+if "expiry" not in st.session_state:
+    st.session_state.expiry = None
 if "students" not in st.session_state:
     st.session_state.students = []
 
-# --- Sidebar input ---
-with st.sidebar:
-    st.header("Student Add Karo")
-    with st.form("add_form", clear_on_submit=True):
-        name = st.text_input("Student ka naam")
-        gender = st.selectbox("Gender", ["FEMALE", "MALE"])
-        sclass = st.selectbox("Class", list(range(1,13)), index=11)
-        perc = st.number_input("Percentage", 0.0, 100.0, 60.0, step=0.1)
-        submitted = st.form_submit_button("➕ Add Student")
-        if submitted and name.strip()!= "":
-            st.session_state.students.append({
-                "name": name.strip(),
-                "gender": gender,
-                "class": str(sclass),
-                "percentage": perc
-            })
-            st.success(f"{name} added!")
-        elif submitted:
-            st.error("Naam blank hai!")
+def is_active():
+    if st.session_state.expiry is None:
+        return False
+    return datetime.now().date() <= st.session_state.expiry
 
-    if st.button("🗑️ Sab Clear Karo"):
+if not is_active():
+    st.markdown(f"<h1 style='text-align:center; color:#1e3a5f'>{SCHOOL_NAME}</h1>", unsafe_allow_html=True)
+    st.markdown(f"<p style='text-align:center'>{SCHOOL_ADDR}</p>", unsafe_allow_html=True)
+    st.divider()
+    st.error("🔒 Software Locked Hai! Activation Code Dale")
+    st.info("Code ke liye Contact Karo: M Saad - 7387246146")
+    code_input = st.text_input("Activation Code Yaha Dale:", placeholder="Ex: MAZAD30-F4A2")
+    if st.button("🔓 Activate Karo", use_container_width=True, type="primary"):
+        days = verify_code(code_input)
+        if days:
+            st.session_state.expiry = datetime.now().date() + timedelta(days=days)
+            st.success(f"Activated! {days} din ke liye. Expiry: {st.session_state.expiry}")
+            st.balloons()
+            st.rerun()
+        else:
+            st.error("Galat Code! Sahi code M Saad se lo.")
+    with st.expander("🔑 Admin Login (Only for M Saad)"):
+        pwd = st.text_input("Admin Password", type="password")
+        if pwd == "Saad@786":
+            st.success("Welcome Boss!")
+            d = st.number_input("Kitne din ka code banana hai?", min_value=1, max_value=3650, value=30)
+            if st.button("Code Banao"):
+                c = generate_code(d)
+                st.code(c)
+        elif pwd!= "":
+            st.error("Galat Password")
+    st.stop()
+
+days_left = (st.session_state.expiry - datetime.now().date()).days
+st.sidebar.success(f"✅ Recharge Active: {days_left} din baaki")
+st.sidebar.write(f"Expiry Date: {st.session_state.expiry}")
+st.sidebar.divider()
+st.markdown(f"<h2 style='text-align:center; color:#1e3a5f'>{SCHOOL_NAME}</h2>", unsafe_allow_html=True)
+st.markdown(f"<p style='text-align:center'>{SCHOOL_ADDR}</p>", unsafe_allow_html=True)
+
+with st.sidebar:
+    st.header("➕ Student Add Karo")
+    with st.form("add_form"):
+        name = st.text_input("Student ka Naam")
+        gender = st.selectbox("Gender", ["MALE", "FEMALE", "OTHER"])
+        class_name = st.selectbox("Class", ["5","6","7","8","9","10","11","12"])
+        perc = st.number_input("Percentage", min_value=0.0, max_value=100.0, step=0.01, format="%.2f")
+        submitted = st.form_submit_button(" + Add Student", use_container_width=True)
+        if submitted:
+            if name.strip() == "":
+                st.warning("Naam to dal bhai!")
+            else:
+                st.session_state.students.append({"name": name.strip(), "gender": gender, "class": class_name, "percentage": perc})
+                st.success(f"{name} added!")
+    if st.button("🗑️ Saare Students Delete Karo"):
         st.session_state.students = []
         st.rerun()
 
-# --- Main Table View ---
 if st.session_state.students:
-    st.subheader(f"Total Students: {len(st.session_state.students)}")
-    st.dataframe(st.session_state.students, use_container_width=True)
-else:
-    st.info("Abhi koi student add nahi hua. Sidebar se add karna start karo.")
-
-# --- PDF CLASS - Tera hi design ---
-class StudentPDF(FPDF):
-    def header(self):
-        self.set_fill_color(25, 55, 95)
-        self.rect(0, 0, 297, 34, "F")
-        self.set_text_color(255, 255, 255)
-        self.set_font("Helvetica", "B", 15)
-        self.set_xy(8, 7)
-        self.cell(281, 8, SCHOOL_NAME, align="C")
-        self.set_font("Helvetica", "", 10)
-        self.set_xy(8, 18)
-        self.cell(281, 6, f"{SCHOOL_ADDRESS} | Phone: {SCHOOL_PHONE}", align="C")
-        self.set_text_color(0, 0, 0)
-        self.ln(39)
-
-if st.button("📄 Royal PDF Banao aur Link Se Download Karo", type="primary", disabled=len(st.session_state.students)==0):
-    students = st.session_state.students
-    students_per_page = 10
-    total_students = len(students)
-    total_pages = (total_students + students_per_page - 1) // students_per_page
-
-    pdf = StudentPDF(orientation="L", unit="mm", format="A4")
-    pdf.set_auto_page_break(auto=False)
-
-    for page_start in range(0, total_students, students_per_page):
+    df = pd.DataFrame(st.session_state.students)
+    df = df.sort_values(by="percentage", ascending=False).reset_index(drop=True)
+    df.index = df.index + 1
+    st.subheader(f"Total Students: {len(df)}")
+    st.dataframe(df, use_container_width=True)
+    def create_pdf(data):
+        pdf = FPDF(orientation='L', format='A4')
         pdf.add_page()
-        page_students = students[page_start:page_start+students_per_page]
-
-        col_widths = [20, 115, 40, 30, 75]
-        headers = ["SR. NO.", "NAME OF STUDENT", "GENDER", "CLASS", "PERCENTAGE"]
-
-        pdf.set_fill_color(0, 150, 136)
+        pdf.set_fill_color(30, 58, 95)
         pdf.set_text_color(255, 255, 255)
-        pdf.set_font("Helvetica", "B", 10)
-        for header, width in zip(headers, col_widths):
-            pdf.cell(width, 11, header, border=1, align="C", fill=True)
+        pdf.set_font("Arial", "B", 16)
+        pdf.cell(0, 15, SCHOOL_NAME, ln=True, align='C', fill=True)
+        pdf.set_font("Arial", "", 11)
+        pdf.cell(0, 8, SCHOOL_ADDR, ln=True, align='C', fill=True)
+        pdf.ln(10)
+        pdf.set_fill_color(0, 150, 136)
+        pdf.set_text_color(255,255,255)
+        pdf.set_font("Arial", "B", 11)
+        col_widths = [20, 110, 30, 20, 40]
+        headers = ["SR. NO.", "NAME OF STUDENT", "GENDER", "CLASS", "PERCENTAGE"]
+        for i, h in enumerate(headers):
+            pdf.cell(col_widths[i], 10, h, border=1, align='C', fill=True)
         pdf.ln()
-
-        pdf.set_font("Helvetica", "", 10)
-        for index, student in enumerate(page_students):
-            global_index = page_start + index + 1
-            if index % 2 == 0:
-                pdf.set_fill_color(240, 248, 250)
+        pdf.set_text_color(0,0,0)
+        pdf.set_font("Arial", "", 10)
+        for idx, row in enumerate(data, start=1):
+            if idx % 2 == 0:
+                pdf.set_fill_color(255,255,255)
             else:
-                pdf.set_fill_color(255, 255, 255)
-            pdf.set_text_color(30, 30, 30)
-
-            pdf.cell(col_widths[0], 12, str(global_index), border=1, align="C", fill=True)
-            pdf.cell(col_widths[1], 12, student["name"][:45], border=1, align="L", fill=True)
-            pdf.cell(col_widths[2], 12, student["gender"], border=1, align="C", fill=True)
-            pdf.cell(col_widths[3], 12, student["class"], border=1, align="C", fill=True)
-
-            percentage_text = f"{student['percentage']:.2f}%"
-            if student["percentage"] >= 56:
-                pdf.set_text_color(0, 110, 80)
-                pdf.set_font("Helvetica", "B", 10)
-            pdf.cell(col_widths[4], 12, percentage_text, border=1, align="C", fill=True)
-            pdf.set_font("Helvetica", "", 10)
-            pdf.set_text_color(30, 30, 30)
+                pdf.set_fill_color(236, 248, 248)
+            pdf.cell(col_widths[0], 8, str(idx), border=1, align='C', fill=True)
+            pdf.cell(col_widths[1], 8, row["name"], border=1, fill=True)
+            pdf.cell(col_widths[2], 8, row["gender"], border=1, align='C', fill=True)
+            pdf.cell(col_widths[3], 8, str(row["class"]), border=1, align='C', fill=True)
+            pdf.set_text_color(0, 100, 80)
+            pdf.set_font("Arial", "B", 10)
+            pdf.cell(col_widths[4], 8, f"{row['percentage']:.2f}%", border=1, align='C', fill=True)
+            pdf.set_text_color(0,0,0)
+            pdf.set_font("Arial", "", 10)
             pdf.ln()
-
-        # Footer
-        pdf.set_y(194)
-        pdf.set_text_color(90, 90, 90)
-        pdf.set_font("Helvetica", "I", 8)
-        pdf.cell(281, 6, f"Thank you! | Powered by {SOFTWARE_NAME} - {SOFTWARE_PHONE}", align="C")
-        pdf.set_y(201)
-        pdf.set_font("Helvetica", "", 7)
-        pdf.set_text_color(130, 130, 130)
-        current_page = (page_start // students_per_page) + 1
-        pdf.cell(281, 4, f"Page {current_page} of {total_pages}", align="R")
-
-    file_name = f"Student_Percentage_List_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
-    pdf.output(file_name)
-    with open(file_name, "rb") as f:
-        st.success("✅ PDF Ban Gayi!")
-        st.download_button("📥 Download PDF", f, file_name=file_name, mime="application/pdf")
+        pdf.ln(10)
+        pdf.set_font("Arial", "I", 9)
+        pdf.set_text_color(100,100,100)
+        pdf.cell(0, 10, FOOTER_TEXT, align='C')
+        return pdf
+    if st.button("📄 Royal PDF Banao", type="primary", use_container_width=True):
+        sorted_students = sorted(st.session_state.students, key=lambda x: x["percentage"], reverse=True)
+        pdf = create_pdf(sorted_students)
+        pdf_path = f"/tmp/Student_List_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+        pdf.output(pdf_path)
+        with open(pdf_path, "rb") as f:
+            st.download_button(label="⬇️ PDF Download Karo", data=f, file_name=f"Student_List_{datetime.now().strftime('%Y%m%d')}.pdf", mime="application/pdf", use_container_width=True)
+else:
+    st.info("Abhi koi student add nahi hai. Sidebar se add karo.")
