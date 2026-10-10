@@ -143,7 +143,8 @@ def create_pdf_bytes(data_list, pass_marks):
     failed = total - passed
     pdf.cell(0, 6, f"Total: {total} | Passed: {passed} | Failed: {failed} | Passing: {pass_marks:.0f}%", align="L")
 
-    pdf.set_y(-15)
+    pdf.set_auto_page_break(auto=False)
+    pdf.set_y(-12)
     pdf.set_font("Helvetica", "I", 7)
     pdf.set_text_color(100, 100, 100)
     pdf.cell(0, 10, f"Thank you! | {FOOTER_TEXT} | {datetime.now().strftime('%d-%m-%Y')}", align="C")
