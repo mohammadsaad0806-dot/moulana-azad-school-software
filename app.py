@@ -5,6 +5,7 @@ import hashlib
 from datetime import datetime, timedelta
 import os
 import json
+import random
 
 SECRET = st.secrets.get("SECRET_KEY", "SAAD7387")
 ADMIN_PASS = st.secrets.get("ADMIN_PASS", "Saad@786")
@@ -19,18 +20,32 @@ STUDENTS_FILE = "students.json"
 CLASSES = ["NUR", "LKG", "UKG", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12"]
 GENDERS = ["MALE", "FEMALE", "OTHER"]
 
+# ================= RANDOM CODE - ROZ ALAG =================
 def generate_code(days: int) -> str:
-    chk = hashlib.md5(f"{days}{SECRET}".encode()).hexdigest()[:4].upper()
-    return f"MAZAD{days}-{chk}"
+    rnd = ''.join(random.choices("ABCDEFGHJKLMNPQRSTUVWXYZ23456789", k=3))
+    chk = hashlib.md5(f"{days}{rnd}{SECRET}".encode()).hexdigest()[:4].upper()
+    return f"MAZAD{days}-{rnd}-{chk}"
 
 def verify_code(code: str):
     try:
         code = code.strip().upper().replace(" ", "")
-        if not code.startswith("MAZAD") or "-" not in code: return None
+        if not code.startswith("MAZAD"): return None
+
         parts = code.split("-")
-        days = int(parts[0].replace("MAZAD", ""))
-        chk_real = hashlib.md5(f"{days}{SECRET}".encode()).hexdigest()[:4].upper()
-        if parts[1] == chk_real: return days
+        # Purana code support: MAZAD1-992F
+        if len(parts) == 2:
+            days = int(parts[0].replace("MAZAD", ""))
+            chk_real = hashlib.md5(f"{days}{SECRET}".encode()).hexdigest()[:4].upper()
+            if parts[1] == chk_real: return days
+            return None
+
+        # Naya code: MAZAD30-X7K-9A2F
+        if len(parts) == 3:
+            days = int(parts[0].replace("MAZAD", ""))
+            rnd = parts[1]
+            chk_given = parts[2]
+            chk_real = hashlib.md5(f"{days}{rnd}{SECRET}".encode()).hexdigest()[:4].upper()
+            if chk_given == chk_real: return days
     except: pass
     return None
 
@@ -66,10 +81,9 @@ def safe_name(name: str, limit: int = 32) -> str:
     n = name.upper()
     return n if len(n) <= limit else n[: limit - 3] + "..."
 
-# ================= PDF - WITH RED FOR FAIL / GREEN FOR PASS =================
 def create_pdf_bytes(data_list, pass_marks):
     pdf = FPDF("P", "mm", "A4")
-    pdf.set_auto_page_break(auto=True, margin=25)
+    pdf.set_auto_page_break(auto=True, margin=20)
     pdf.add_page()
 
     pdf.set_fill_color(30, 58, 95)
@@ -102,12 +116,11 @@ def create_pdf_bytes(data_list, pass_marks):
         div = get_division(per, pass_marks)
         remark = "PASS" if not is_fail else "FAIL"
 
-        # ===== FAIL = RED, PASS = GREEN TINT =====
         if is_fail:
-            pdf.set_fill_color(255, 200, 200) # Light Red background
-            pdf.set_text_color(180, 0, 0) # Dark Red text
+            pdf.set_fill_color(255, 200, 200)
+            pdf.set_text_color(180, 0, 0)
         else:
-            if idx % 2 == 0: pdf.set_fill_color(234, 246, 243) # Light Green
+            if idx % 2 == 0: pdf.set_fill_color(234, 246, 243)
             else: pdf.set_fill_color(255, 255, 255)
             pdf.set_text_color(0, 0, 0)
 
@@ -115,21 +128,17 @@ def create_pdf_bytes(data_list, pass_marks):
         pdf.cell(cw[1], 8, safe_name(row["name"], 32), border=1, align="L", fill=True)
         pdf.cell(cw[2], 8, row["gender"], border=1, align="C", fill=True)
         pdf.cell(cw[3], 8, str(row["class"]), border=1, align="C", fill=True)
-
-        # Percentage Bold
         pdf.set_font("Helvetica", "B", 8.5)
         pdf.cell(cw[4], 8, f"{per:.2f}%", border=1, align="C", fill=True)
         pdf.set_font("Helvetica", "", 8.5)
-
         pdf.cell(cw[5], 8, div, border=1, align="C", fill=True)
 
-        # Remarks Bold + Color
         if is_fail:
             pdf.set_font("Helvetica", "B", 8.5)
             pdf.set_text_color(180, 0, 0)
         else:
             pdf.set_font("Helvetica", "B", 8.5)
-            pdf.set_text_color(0, 128, 0) # Green for PASS
+            pdf.set_text_color(0, 128, 0)
 
         pdf.cell(cw[6], 8, remark, border=1, align="C", fill=True)
         pdf.ln()
@@ -143,14 +152,14 @@ def create_pdf_bytes(data_list, pass_marks):
     failed = total - passed
     pdf.cell(0, 6, f"Total: {total} | Passed: {passed} | Failed: {failed} | Passing: {pass_marks:.0f}%", align="L")
 
+    # ===== FOOTER FIX + TIME =====
     pdf.set_auto_page_break(auto=False)
     pdf.set_y(-12)
     pdf.set_font("Helvetica", "I", 7)
     pdf.set_text_color(100, 100, 100)
-    pdf.cell(0, 10, f"Thank you! | {FOOTER_TEXT} | {datetime.now().strftime('%d-%m-%Y')}", align="C")
+    pdf.cell(0, 10, f"Thank you! | {FOOTER_TEXT} | {datetime.now().strftime('%d-%m-%Y %I:%M %p')}", align="C")
     return bytes(pdf.output())
 
-# ================= SETUP =================
 st.set_page_config(page_title="Maulana Azad", layout="wide")
 
 if "expiry" not in st.session_state: st.session_state.expiry = load_expiry()
@@ -184,7 +193,6 @@ if not is_active():
             if st.button("Generate Code"): st.code(generate_code(dn))
     st.stop()
 
-# ================= SIDEBAR =================
 with st.sidebar:
     st.success(f"✅ Active till {st.session_state.expiry}")
     days_left = (st.session_state.expiry - datetime.now().date()).days
@@ -196,12 +204,10 @@ with st.sidebar:
         st.rerun()
 
     st.divider()
-
-    # ===== NAYA FEATURE 1: FAIL KITNE % PAR? =====
     st.subheader("⚙️ Passing Settings")
-    pass_input = st.number_input("Fail Kitne % se niche? (Passing Marks)", 0.0, 100.0, value=st.session_state.pass_marks, step=1.0)
+    pass_input = st.number_input("Fail Kitne % se niche?", 0.0, 100.0, value=st.session_state.pass_marks, step=1.0)
     st.session_state.pass_marks = pass_input
-    st.caption(f"👉 {pass_input:.0f}% se niche wala FAIL, uske upar PASS")
+    st.caption(f"👉 {pass_input:.0f}% se niche FAIL")
     st.divider()
 
     st.header("➕ Student Add")
@@ -229,7 +235,9 @@ with st.sidebar:
             st.success("Welcome Boss!")
             d2 = st.number_input("Kitne din ka code?", min_value=1, max_value=3650, value=30, key="d2")
             if st.button("Generate Code", key="gen2"):
-                st.code(generate_code(d2))
+                code = generate_code(d2)
+                st.code(code)
+                st.info(f"Ye {d2} din ka random code hai, roz alag banega!")
         elif pwd2!= "":
             st.error("Galat Password")
 
@@ -251,13 +259,11 @@ with st.sidebar:
                 st.session_state.confirm_delete = False
                 st.rerun()
 
-# ================= MAIN =================
 st.markdown(f"<h2 style='text-align:center; color:#1e3a5f'>{SCHOOL_NAME}</h2>", unsafe_allow_html=True)
 st.markdown(f"<p style='text-align:center'>{SCHOOL_ADDR}</p>", unsafe_allow_html=True)
 st.divider()
 
-# Live Preview of Pass/Fail Logic
-st.info(f"📊 Current Rule: **{st.session_state.pass_marks:.0f}% se kam = FAIL (Red)** | **{st.session_state.pass_marks:.0f}% ya usse zyada = PASS (Green)**")
+st.info(f"📊 Current Rule: **{st.session_state.pass_marks:.0f}% se kam = FAIL (Red)** | **{st.session_state.pass_marks:.0f}% ya zyada = PASS (Green)**")
 
 if st.session_state.students:
     df = pd.DataFrame(st.session_state.students).sort_values(by="percentage", ascending=False).reset_index(drop=True)
@@ -280,7 +286,7 @@ if st.session_state.students:
         st.download_button(
             label="⬇️ Royal PDF Download Karo",
             data=st.session_state.pdf_data,
-            file_name=f"Royal_Merit_List_{datetime.now().strftime('%d%m%Y')}.pdf",
+            file_name=f"Royal_Merit_List_{datetime.now().strftime('%d%m%Y_%I%M%p')}.pdf",
             mime="application/pdf",
             use_container_width=True,
             type="primary",
@@ -291,7 +297,7 @@ else:
         st.download_button(
             label="⬇️ Royal PDF Download Karo",
             data=st.session_state.pdf_data,
-            file_name=f"Royal_Merit_List_{datetime.now().strftime('%d%m%Y')}.pdf",
+            file_name=f"Royal_Merit_List_{datetime.now().strftime('%d%m%Y_%I%M%p')}.pdf",
             mime="application/pdf",
             use_container_width=True,
             type="primary",
